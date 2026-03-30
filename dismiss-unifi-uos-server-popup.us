@@ -1,0 +1,89 @@
+
+  // ==UserScript==
+  // @name         UniFi Auto-dismiss Upgrade Prompt
+  // @include      /^https:\/\/[^/]+:8443\/manage\/.*/
+  // @run-at       document-start
+  // @grant        none
+  // ==/UserScript==
+
+  (function () {
+    'use strict';
+
+    const LS_KEY = 'unifiAutoDismissModalState';
+    const SS_PREFIX = 'networkServerUpgradeModalDismissed-';
+    const TITLE = 'Upgrade to UniFi OS Server';
+    const BUTTON = 'Remind Me Later';
+
+    function loadState() {
+      try {
+        return JSON.parse(localStorage.getItem(LS_KEY) || '{}');
+      } catch {
+        return {};
+      }
+    }
+
+    function saveState(state) {
+      try {
+        localStorage.setItem(LS_KEY, JSON.stringify(state));
+      } catch {}
+    }
+
+    function restoreSessionKeys() {
+      const state = loadState();
+      for (const [key, value] of Object.entries(state)) {
+        if (key.startsWith(SS_PREFIX) && typeof value === 'string' && value) {
+          sessionStorage.setItem(key, value);
+        }
+      }
+    }
+
+    function captureSessionKeys() {
+      const state = loadState();
+      let changed = false;
+
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const key = sessionStorage.key(i);
+        if (!key || !key.startsWith(SS_PREFIX)) continue;
+        const value = sessionStorage.getItem(key);
+        if (typeof value === 'string' && value && state[key] !== value) {
+          state[key] = value;
+          changed = true;
+        }
+      }
+
+      if (changed) {
+        saveState(state);
+        console.log('[unifi-dismiss] saved', state);
+      }
+    }
+
+    function clickRemindLater() {
+      const dialogs = document.querySelectorAll('section[role="dialog"], [role="dialog"]');
+      for (const dialog of dialogs) {
+        const text = dialog.textContent || '';
+        if (!text.includes(TITLE)) continue;
+
+        const buttons = dialog.querySelectorAll('button');
+        for (const button of buttons) {
+          if ((button.textContent || '').includes(BUTTON)) {
+            console.log('[unifi-dismiss] clicking Remind Me Later');
+            button.click();
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    restoreSessionKeys();
+
+    setInterval(() => {
+      captureSessionKeys();
+      clickRemindLater();
+    }, 250);
+
+    window.addEventListener('load', () => {
+      captureSessionKeys();
+      clickRemindLater();
+    }, true);
+  })();
